@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="author" content="Zul Suriya">
+  <title>Survey - InsightHub</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="survey-wrap" id="sc">
+    <div class="loading" style="min-height:80vh"><div class="loading-inner"><div class="spinner"></div><p style="margin-top:12px;color:var(--text-2)">Loading survey...</p></div></div>
+  </div>
+  <script src="js/database.js"></script>
+  <script>
+    class SurveyPage {
+      constructor(){this.sid=null;this.survey=null;this.qs=[];}
+      async init(){
+        const p=new URLSearchParams(window.location.search);this.sid=parseInt(p.get('survey'));
+        if(!this.sid){this.err('No survey specified.');return;}
+        if(!await db.init()){this.err('Could not connect. Please refresh.');return;}
+        this.load();
+      }
+      async load(){
+        try{
+          this.survey=db.getSurvey(this.sid);if(!this.survey){this.err('Survey not found.');return;}
+          this.qs=db.getSurveyQuestions(this.sid);if(!this.qs.length){this.err('No questions in this survey.');return;}
+          this.show();
+        }catch(e){this.err(e.message);}
+      }
+      show(){
+        const emps=db.getEmployees();
+        document.getElementById('sc').innerHTML=`
+          <div class="survey-hd"><div style="font-size:40px;margin-bottom:12px">📋</div><h1 class="survey-title">${this.esc(this.survey.title)}</h1><p class="survey-desc">${this.esc(this.survey.description||'')}</p></div>
+          <form id="sf">
+            <div class="card mb-lg"><div class="fg"><label class="fl">Your Name *</label><select class="sel" name="employee_id" id="empSel" required style="width:100%"><option value="">Select your name...</option>${emps.map(e=>`<option value="${e.id}">${this.esc(e.name)}${e.job_title?' — '+this.esc(e.job_title):''}</option>`).join('')}</select></div></div>
+            <div id="qSec" style="display:none">
+              ${this.qs.map((q,i)=>this.renderQ(q,i)).join('')}
+              <button type="submit" class="btn btn-p btn-lg" style="margin-top:16px">Submit Survey</button>
+            </div>
+          </form>`;
+        document.getElementById('empSel').addEventListener('change',async e=>{
+          if(!e.target.value){document.getElementById('qSec').style.display='none';return;}
+          if(db.hasCompletedSurvey(this.sid,parseInt(e.target.value))){alert('You have already completed this survey.');e.target.value='';return;}
+          document.getElementById('qSec').style.display='block';document.getElementById('qSec').scrollIntoView({behavior:'smooth'});
+        });
+        document.getElementById('sf').addEventListener('submit',e=>{e.preventDefault();this.submit();});
+      }
+      renderQ(q,i){
+        let inp='';
+        if(q.question_type==='scale')inp=`<div class="scale-inp">${Array.from({length:10},(_,j)=>j+1).map(n=>`<div class="scale-opt"><input type="radio" id="q${q.id}_${n}" name="q_${q.id}" value="${n}" required><label for="q${q.id}_${n}">${n}</label></div>`).join('')}</div>`;
+        else if(q.question_type==='yes-no')inp=`<div class="yn-inp"><div class="yn-opt"><input type="radio" id="q${q.id}_y" name="q_${q.id}" value="yes" required><label for="q${q.id}_y">Yes</label></div><div class="yn-opt"><input type="radio" id="q${q.id}_n" name="q_${q.id}" value="no" required><label for="q${q.id}_n">No</label></div></div>`;
+        else inp=`<textarea class="inp" name="q_${q.id}" required placeholder="Your response..."></textarea>`;
+        return`<div class="q-card"><div class="q-num">Question ${i+1}</div><div class="q-text">${this.esc(q.question_text)}</div>${inp}</div>`;
+      }
+      async submit(){
+        const fd=new FormData(document.getElementById('sf'));const eid=fd.get('employee_id');if(!eid){alert('Select your name.');return;}
+        const resps=this.qs.map(q=>({question_id:q.id,value:fd.get('q_'+q.id)}));
+        try{await db.submitSurveyResponse(this.sid,parseInt(eid),resps);document.getElementById('sc').innerHTML=`<div class="survey-hd" style="min-height:80vh;display:flex;flex-direction:column;justify-content:center"><div style="font-size:48px;margin-bottom:16px">✅</div><h1 class="survey-title" style="color:var(--success)">Thank You!</h1><p class="survey-desc">Your responses have been submitted.</p></div>`;}
+        catch(e){alert('Error: '+e.message);}
+      }
+      err(m){document.getElementById('sc').innerHTML=`<div class="survey-hd" style="min-height:80vh;display:flex;flex-direction:column;justify-content:center"><div style="font-size:48px;margin-bottom:16px">⚠️</div><h1 class="survey-title" style="color:var(--danger)">Error</h1><p class="survey-desc">${this.esc(m)}</p></div>`;}
+      esc(t){if(!t)return'';const d=document.createElement('div');d.textContent=String(t);return d.innerHTML;}
+    }
+    document.addEventListener('DOMContentLoaded',()=>new SurveyPage().init());
+  </script>
+</body>
+</html>
