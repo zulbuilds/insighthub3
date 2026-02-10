@@ -13,7 +13,8 @@ class InsightHubApp {
     document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();this.goSearch();}});
   }
 
-  goSearch(){this.nav('employees');setTimeout(()=>{const s=document.getElementById('empSearch');if(s){s.focus();s.select();}},150);}
+  goSearch(){const s=document.getElementById('topSearch');if(s){s.focus();s.select();}}
+  liveSearch(q){const sr=document.getElementById('searchResults');if(!q||q.length<2){sr.innerHTML='';return;}const s=q.toLowerCase();const emps=db.getEmployees().filter(e=>e.name.toLowerCase().includes(s)||(e.email||'').toLowerCase().includes(s)||(e.job_title||'').toLowerCase().includes(s)).slice(0,8);if(!emps.length){sr.innerHTML='<div class="sr-empty">No results</div>';return;}sr.innerHTML=emps.map(e=>'<a class="sr-item" href="#" onclick="app.viewEmp('+e.id+');document.getElementById(\'searchResults\').innerHTML=\'\';document.getElementById(\'topSearch\').value=\'\';return false"><strong>'+this.esc(e.name)+'</strong><span class="text-xs">'+this.esc(e.job_title||'')+' · '+this.esc((e.industry_sme||'')+(e.module_sme?', '+e.module_sme:''))+'</span></a>').join('');}
 
   render(){
     document.body.innerHTML=`
@@ -53,7 +54,9 @@ class InsightHubApp {
     document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();this.nav(a.dataset.p);this.closeMenu();}));
     document.getElementById('menuBtn').addEventListener('click',()=>this.toggleMenu());
     document.getElementById('ov').addEventListener('click',()=>this.closeMenu());
-    document.getElementById('searchBtn').addEventListener('click',()=>this.goSearch());
+    document.getElementById('topSearch').addEventListener('input',(ev)=>{this.liveSearch(ev.target.value);});
+    document.getElementById('topSearch').addEventListener('focus',(ev)=>{if(ev.target.value)this.liveSearch(ev.target.value);});
+    document.addEventListener('click',(ev)=>{if(!ev.target.closest('.search-wrap'))document.getElementById('searchResults').innerHTML='';});
     document.getElementById('exportBtn').addEventListener('click',()=>this.exportCSV());
     document.getElementById('resetBtn').addEventListener('click',async()=>{if(confirm('Reset all data to demo defaults?')){this.loading('Resetting...');await db.resetDatabase();this.nav(this.page);this.notify('Database reset','ok');}});
     document.getElementById('backupBtn').addEventListener('click',()=>{const b=db.createBackup();const bl=new Blob([JSON.stringify(b,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='insighthub-backup-'+new Date().toISOString().split('T')[0]+'.json';a.click();URL.revokeObjectURL(a.href);this.notify('Backup downloaded','ok');});
@@ -89,8 +92,8 @@ class InsightHubApp {
           <div class="stat"><div class="stat-label">Upcoming Reviews</div><div class="stat-val">${a.upcomingReviews}</div></div>
         </div>
         <div class="g2 mb-lg">
-          <div class="card"><div class="card-hd"><h3>SME Coverage</h3></div><canvas id="smeChart" height="200"></canvas></div>
-          <div class="card"><div class="card-hd"><h3>Training Status</h3></div><canvas id="trainChart" height="200"></canvas>
+          <div class="card"><div class="card-hd"><h3>SME Coverage</h3></div><div style="height:220px;position:relative"><canvas id="smeChart"></canvas></div></div>
+          <div class="card"><div class="card-hd"><h3>Training Status</h3></div><div style="height:220px;position:relative"><canvas id="trainChart"></canvas></div>
             <div style="margin-top:16px">
               <div class="progress-row"><label>Completed</label><div class="progress-wrap"><div class="progress-fill pf-success" style="width:${compRate}%"></div></div><span>${compRate}%</span></div>
               <div class="progress-row"><label>In Progress</label><div class="progress-wrap"><div class="progress-fill pf-warning" style="width:${ipRate}%"></div></div><span>${a.coursesInProgress}</span></div>
@@ -150,8 +153,8 @@ class InsightHubApp {
     if(!f.length)return`<div class="empty"><h3>No employees found</h3><p>${this.search||this.fISme||this.fTag?'Adjust your filters':'Add your first employee'}</p></div>`;
     return`<table><thead><tr><th>Name</th><th class="hide-m">Title</th><th class="hide-t">SMEs</th><th class="hide-m">Tags</th><th></th></tr></thead><tbody>${f.map(e=>{
       const ts=tagMap[e.id]||[];
-      const smes=[(e.industry_sme||''),(e.module_sme||'')].filter(Boolean).join(', ');
-      return`<tr><td><a href="#" onclick="app.viewEmp(${e.id});return false" style="color:var(--text);text-decoration:none"><strong>${this.esc(e.name)}</strong></a><div class="text-xs">${this.esc(e.email||'')}</div></td><td class="hide-m">${this.esc(e.job_title||'')}</td><td class="hide-t text-sm text-muted">${this.esc(smes)}</td><td class="hide-m">${ts.map(t=>`<span class="tag" style="background:${t.tag_color}18;color:${t.tag_color};border:1px solid ${t.tag_color}30">${this.esc(t.tag_name)}</span>`).join(' ')}</td><td><div class="act-btns"><button class="btn btn-g btn-sm" onclick="app.viewEmp(${e.id})">View</button><button class="btn btn-g btn-sm btn-d" onclick="app.delEmp(${e.id})">✕</button></div></td></tr>`;
+      const iSmeStr=e.industry_sme||'';const mSmeStr=e.module_sme||'';
+      return`<tr><td><a href="#" onclick="app.viewEmp(${e.id});return false" style="color:var(--text);text-decoration:none"><strong>${this.esc(e.name)}</strong></a><div class="text-xs">${this.esc(e.email||'')}</div></td><td class="hide-m">${this.esc(e.job_title||'')}</td><td class="hide-t text-sm">${iSmeStr?`<div><span class="badge badge-p" style="margin-right:3px;font-size:10px">Ind</span>${this.esc(iSmeStr)}</div>`:''} ${mSmeStr?`<div style="margin-top:2px"><span class="badge badge-s" style="margin-right:3px;font-size:10px">Mod</span>${this.esc(mSmeStr)}</div>`:''}</td><td class="hide-m">${ts.map(t=>`<span class="tag" style="background:${t.tag_color}18;color:${t.tag_color};border:1px solid ${t.tag_color}30">${this.esc(t.tag_name)}</span>`).join(' ')}</td><td><div class="act-btns"><button class="btn btn-g btn-sm" onclick="app.viewEmp(${e.id})">View</button><button class="btn btn-g btn-sm btn-d" onclick="app.delEmp(${e.id})">✕</button></div></td></tr>`;
     }).join('')}</tbody></table>`;
   }
 
@@ -203,7 +206,7 @@ class InsightHubApp {
 
     // Count unique survey participations
     const surveyIds=[...new Set(resps.map(r=>r.survey_id))];
-    const surveyInfo=surveyIds.map(sid=>{const s=db.getSurvey(sid);const qs=db.getSurveyQuestions(sid);const sr=resps.filter(r=>r.survey_id===sid);const scaleR=sr.filter(r=>{const q=qs.find(x=>x.id===r.question_id);return q&&q.question_type==='scale';});const avg=scaleR.length?(scaleR.reduce((a,r)=>a+parseFloat(r.response_value||0),0)/scaleR.length).toFixed(1):null;return{title:s?s.title:'Survey #'+sid,avg};});
+    const surveyInfo=surveyIds.map(sid=>{const s=db.getSurvey(sid);const qs=db.getSurveyQuestions(sid);const sr=resps.filter(r=>r.survey_id===sid);const scaleR=sr.filter(r=>{const q=qs.find(x=>x.id===r.question_id);return q&&q.question_type==='scale';});const avg=scaleR.length?(scaleR.reduce((a,r)=>a+parseFloat(r.response_value||0),0)/scaleR.length).toFixed(1):null;return{id:sid,title:s?s.title:'Survey #'+sid,avg};});
 
     const cw=document.getElementById('cw');
     cw.innerHTML=`
@@ -215,7 +218,9 @@ class InsightHubApp {
               <div class="av">${init}</div>
               <div style="flex:1">
                 <div class="profile-name">${this.esc(e.name)}</div>
-                <div class="profile-role">${this.esc(e.job_title||'No title')}${smes?' · '+this.esc(smes):''}</div>
+                <div class="profile-role">${this.esc(e.job_title||'No title')}</div>
+                ${e.industry_sme?`<div class="text-sm" style="margin-top:4px"><span class="badge badge-p" style="margin-right:6px">Industry SME</span>${this.esc(e.industry_sme)}</div>`:''}
+                ${e.module_sme?`<div class="text-sm" style="margin-top:4px"><span class="badge badge-s" style="margin-right:6px">Module SME</span>${this.esc(e.module_sme)}</div>`:''}
                 ${e.email?`<div class="profile-email">${this.esc(e.email)}</div>`:''}
               </div>
               <div class="act-btns"><button class="btn btn-s btn-sm" onclick="app.empModal(${id})">Edit Profile</button></div>
@@ -257,7 +262,7 @@ class InsightHubApp {
 
           <div class="card">
             <div class="card-hd"><h3>Survey Results</h3></div>
-            ${surveyInfo.length?surveyInfo.map(s=>`<div class="review-row"><span class="text-sm">${this.esc(s.title)}</span>${s.avg?`<span class="fw-600">${s.avg}/10</span>`:''}</div>`).join(''):'<p class="text-sm text-muted">No survey responses</p>'}
+            ${surveyInfo.length?surveyInfo.map(s=>`<div class="review-row" style="cursor:pointer" onclick="app.surveyResults(${s.id})"><span class="text-sm" style="color:var(--primary)">${this.esc(s.title)}</span>${s.avg?`<span class="fw-600">${s.avg}/10</span>`:''}</div>`).join(''):'<p class="text-sm text-muted">No survey responses</p>'}
           </div>
         </div>
       </div>`;

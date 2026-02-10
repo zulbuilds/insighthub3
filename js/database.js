@@ -93,9 +93,30 @@ class DatabaseManager {
     const meta=await this.api(SHEETS_API+'?fields=sheets.properties.title');
     const existing=meta.sheets.map(s=>s.properties.title);
     const missing=Object.keys(SHEET_SCHEMAS).filter(s=>!existing.includes(s));
+    let needSeed=false;
     if(missing.length>0){
       await this.api(SHEETS_API+':batchUpdate',{method:'POST',body:JSON.stringify({requests:missing.map(t=>({addSheet:{properties:{title:t}}}))})});
       await this.api(SHEETS_API+'/values:batchUpdate',{method:'POST',body:JSON.stringify({valueInputOption:'RAW',data:missing.map(n=>({range:n+'!A1:'+this.colLetter(SHEET_SCHEMAS[n].length)+'1',values:[SHEET_SCHEMAS[n]]}))})});
+      needSeed=true;
+    }
+    // Check schema: verify employees sheet has industry_sme column (v2 migration)
+    if(existing.includes('employees')){
+      const hdr=await this.api(SHEETS_API+'/values/'+encodeURIComponent('employees!A1:Z1'));
+      const cols=(hdr.values&&hdr.values[0])||[];
+      if(!cols.includes('industry_sme')){
+        // Old schema detected - wipe employees sheet and re-create with new headers
+        const sMeta=await this.api(SHEETS_API+'?fields=sheets.properties');
+        const empSheet=sMeta.sheets.find(x=>x.properties.title==='employees');
+        if(empSheet){
+          await this.api(SHEETS_API+'/values/employees!A1:Z10000?valueInputOption=RAW',{method:'PUT',body:JSON.stringify({values:[SHEET_SCHEMAS.employees]})});
+        }
+        needSeed=true;
+      }
+    }
+    if(needSeed){
+      // Clear all sheets data rows before seeding
+      const clearRanges=Object.keys(SHEET_SCHEMAS).map(n=>n+'!A2:Z10000');
+      try{await this.api(SHEETS_API+'/values:batchClear',{method:'POST',body:JSON.stringify({ranges:clearRanges})});}catch(e){}
       await this.seedData();
     }
   }
